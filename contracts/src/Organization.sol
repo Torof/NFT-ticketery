@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.27;
 
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "./EventTicket.sol";
 import "./TicketPlatform.sol";
-import "./IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title Organization

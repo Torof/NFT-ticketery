@@ -2,10 +2,10 @@
 pragma solidity 0.8.27;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "./TicketPlatform.sol";
-import "./IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title EventTicket
