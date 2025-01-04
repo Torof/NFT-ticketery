@@ -1,36 +1,139 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NFTickets
+
+This platform revolutionizes event ticketing by leveraging blockchain technology while maintaining the simplicity of traditional ticketing systems. Our solution enables secure ticket ownership and verified resale markets through NFTs, all while keeping the underlying blockchain technology invisible to end users.
+
+## Overview
+
+The platform serves two distinct user groups through specialized interfaces. Event organizations can create and manage events, issue tickets, and track sales after completing KYC verification. End users can purchase, hold, and transfer tickets through familiar e-commerce interfaces, with all blockchain operations handled seamlessly by the platform.
+
+We maintain fair market practices by implementing sophisticated controls that prevent ticket speculation while preserving true digital ownership. The platform ensures events remain accessible to all by maintaining reasonable pricing in both primary and secondary markets.
+
+## Project Structure
+
+The project is organized into two main components:
+
+### Smart Contracts (`/contracts`)
+
+Our smart contract architecture consists of four primary contracts:
+
+- `EventFactory.sol`: Manages efficient deployment of new event contracts using the minimal proxy pattern
+- `EventTicket.sol`: Implements the ERC-721 standard for NFT tickets with custom transfer restrictions
+- `Organization.sol`: Handles organization-specific operations including event creation
+- `TicketPlatform.sol`: The central contract managing platform operations and system configuration
+
+### Frontend (`/src`)
+
+A Next.js application providing user interfaces for both organizations and end users, leveraging modern web technologies for a seamless experience.
+
+## Development Requirements
+
+### Smart Contract Development
+
+- Foundry
+- Solidity ^0.8.27
+- OpenZeppelin Contracts
+- Forge Standard Library
+
+### Frontend Development
+
+- Node.js (v20+)
+- Next.js 15.1.3
+- React 19.0.0
+- TypeScript 5
+- Wagmi 2.14.6
+- Viem 2.22.1
+- TanStack Query 5.62.11
 
 ## Getting Started
 
-First, run the development server:
+### Smart Contract Development
 
+1. Install Foundry:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+cd contracts
+forge install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Run tests:
+```bash
+forge test
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Build contracts:
+```bash
+forge build
+```
 
-## Learn More
+### Frontend Development
 
-To learn more about Next.js, take a look at the following resources:
+1. Install dependencies:
+```bash
+yarn install
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+2. Set up environment variables:
+```bash
+cp .env.example .env.local
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+3. Start the development server with Turbopack:
+```bash
+yarn dev
+```
 
-## Deploy on Vercel
+## Available Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+yarn dev          # Start development server with Turbopack
+yarn build        # Create production build
+yarn start        # Start production server
+yarn lint         # Run ESLint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Testing
+
+### Smart Contract Testing
+
+Execute tests using Foundry:
+
+```bash
+forge test                     # Run all tests
+forge test --match-contract   # Run specific contract tests
+forge coverage                # Generate coverage report
+```
+
+### Frontend Linting
+
+```bash
+yarn lint                     # Run ESLint
+```
+
+## Documentation
+
+Comprehensive documentation is available in the following files:
+
+- `guidelines.md`: Core project principles and architectural decisions
+- `/docs/development-backlog.md`: Development roadmap and priorities
+- `/docs/meta-transaction-specification.md`: Technical specification for gasless transactions
+
+## Contributing
+
+We welcome contributions that align with our project's vision of making event ticketing more accessible and secure. Please review our guidelines.md for architectural decisions and implementation standards before submitting pull requests.
+
+## License
+
+This project is licensed under the MIT License.
+
+## Contact
+
+[Contact Information]
+
+---
+
+For detailed technical information and development standards, please refer to our guidelines.md document.
