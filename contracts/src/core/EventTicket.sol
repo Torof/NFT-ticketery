@@ -4,27 +4,29 @@ pragma solidity 0.8.27;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "../meta-transactions/MetaTransactionContext.sol";
 import "./TicketPlatform.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title EventTicket
- * @notice NFT contract for event tickets with token-based payments and resale functionality
- * @dev Implements ERC721 for tickets, uses platform's payment token for transactions
+ * @notice NFT contract for event tickets with gasless transaction support
+ * @dev Implements ERC721 for tickets and MetaTransactionContext for gasless operations
  */
-contract EventTicket is ERC721, Pausable, Initializable {
-    // Custom Errors for validation and access control
-    error NotOrganization(address caller);
+contract EventTicket is ERC721, Pausable, Initializable, MetaTransactionContext {
+    // Custom Errors
+    error NotOrganization(address sender);
     error EventClosed();
     error DeadlinePassed(uint256 deadline, uint256 current);
-    error SoldOut(uint256 maxSupply);
+    error SoldOut(uint256 maxSupply, uint256 currentSupply);
     error InsufficientAllowance(uint256 required, uint256 provided);
     error TokenTransferFailed(address token, address from, address to, uint256 amount);
-    error NotTokenOwner(address caller, uint256 tokenId);
-    error InvalidDeadline(uint256 deadline, uint256 current);
-    error InvalidInitialization(string reason);
+    error NotTokenOwner(address sender, uint256 tokenId, address actualOwner);
     error InvalidRecipient(address recipient);
     error InvalidPrice(uint256 price);
+    error InvalidInitialization(string reason, address problematicAddress);
+    error InvalidDeadline(uint256 deadline, uint256 current);
     
     // State variables
     address public organizationContract;
@@ -36,7 +38,7 @@ contract EventTicket is ERC721, Pausable, Initializable {
     bool public isClosed;
     string private baseTokenURI;
     
-    // Events for subgraph indexing
+    // Events
     event TicketMinted(
         uint256 indexed tokenId,
         address indexed to,
@@ -72,13 +74,17 @@ contract EventTicket is ERC721, Pausable, Initializable {
     );
 
     modifier onlyOrganization() {
-        require(msg.sender == organizationContract, NotOrganization(msg.sender));
+        require(_msgSender() == organizationContract, NotOrganization(_msgSender()));
         _;
     }
 
     /**
-     * @dev Contract constructor that disables initialization for the implementation contract
+     * @dev Override _msgSender to handle meta-transactions
      */
+    function _msgSender() internal view virtual override(Context, MetaTransactionContext) returns (address) {
+        return MetaTransactionContext._msgSender();
+    }
+
     constructor() ERC721("Event Ticket", "TICKET") {
         _disableInitializers();
     }
@@ -95,11 +101,20 @@ contract EventTicket is ERC721, Pausable, Initializable {
         uint256 _maxSupply,
         address _platformContract
     ) external initializer {
-        require(_organizationContract != address(0), InvalidInitialization("Invalid organization"));
-        require(_platformContract != address(0), InvalidInitialization("Invalid platform"));
-        require(_deadline > block.timestamp, InvalidInitialization("Invalid deadline"));
-        require(_maxSupply > 0, InvalidInitialization("Invalid supply"));
-        require(_ticketPrice > 0, InvalidInitialization("Invalid price"));
+        require(
+            _organizationContract != address(0), 
+            InvalidInitialization("Invalid organization", _organizationContract)
+        );
+        require(
+            _platformContract != address(0), 
+            InvalidInitialization("Invalid platform", _platformContract)
+        );
+        require(
+            _deadline > block.timestamp, 
+            InvalidDeadline(_deadline, block.timestamp)
+        );
+        require(_maxSupply > 0, InvalidPrice(_maxSupply));
+        require(_ticketPrice > 0, InvalidPrice(_ticketPrice));
         
         organizationContract = _organizationContract;
         ticketPrice = _ticketPrice;
@@ -110,19 +125,21 @@ contract EventTicket is ERC721, Pausable, Initializable {
     }
 
     /**
-     * @notice Mints a new ticket to the caller
-     * @dev Handles token payments, platform fees, and minting in one transaction
+     * @notice Mints a new ticket with gasless transaction support
+     * @dev Uses _msgSender() to support meta-transactions
      */
     function mint() external whenNotPaused {
+        address sender = _msgSender();
+        
         require(!isClosed, EventClosed());
         require(block.timestamp < deadline, DeadlinePassed(deadline, block.timestamp));
-        require(currentSupply < maxSupply, SoldOut(maxSupply));
+        require(currentSupply < maxSupply, SoldOut(maxSupply, currentSupply));
         
         uint256 tokenId = currentSupply++;
         
         // Get payment token and validate allowance
         IERC20 paymentToken = TicketPlatform(platformContract).paymentToken();
-        uint256 allowance = paymentToken.allowance(msg.sender, address(this));
+        uint256 allowance = paymentToken.allowance(sender, address(this));
         require(allowance >= ticketPrice, InsufficientAllowance(ticketPrice, allowance));
         
         // Calculate and process platform fee
@@ -130,33 +147,38 @@ contract EventTicket is ERC721, Pausable, Initializable {
         uint256 organizationPayment = ticketPrice - platformFee;
         
         // Transfer platform fee
-        bool feeSuccess = paymentToken.transferFrom(msg.sender, platformContract, platformFee);
-        require(feeSuccess, TokenTransferFailed(address(paymentToken), msg.sender, platformContract, platformFee));
+        bool feeSuccess = paymentToken.transferFrom(sender, platformContract, platformFee);
+        require(
+            feeSuccess, 
+            TokenTransferFailed(address(paymentToken), sender, platformContract, platformFee)
+        );
         
         // Transfer payment to organization
         bool paymentSuccess = paymentToken.transferFrom(
-            msg.sender, 
-            organizationContract, 
+            sender,
+            organizationContract,
             organizationPayment
         );
         require(
             paymentSuccess, 
-            TokenTransferFailed(address(paymentToken), msg.sender, organizationContract, organizationPayment)
+            TokenTransferFailed(address(paymentToken), sender, organizationContract, organizationPayment)
         );
         
-        _safeMint(msg.sender, tokenId);
+        _safeMint(sender, tokenId);
         
-        emit TicketMinted(tokenId, msg.sender, ticketPrice, platformFee, block.timestamp);
+        emit TicketMinted(tokenId, sender, ticketPrice, platformFee, block.timestamp);
     }
 
     /**
-     * @notice Handles ticket resale between users
-     * @dev Manages token transfers and platform fees for secondary market sales
+     * @notice Handles ticket resale between users with gasless transaction support
+     * @dev Uses _msgSender() to support meta-transactions
      */
     function resell(uint256 tokenId, address to, uint256 price) external whenNotPaused {
+        address sender = _msgSender();
+        
         require(!isClosed, EventClosed());
         require(block.timestamp < deadline, DeadlinePassed(deadline, block.timestamp));
-        require(ownerOf(tokenId) == msg.sender, NotTokenOwner(msg.sender, tokenId));
+        require(_ownerOf(tokenId) == sender, NotTokenOwner(sender, tokenId, _ownerOf(tokenId)));
         require(to != address(0), InvalidRecipient(to));
         require(price > 0, InvalidPrice(price));
         
@@ -172,30 +194,21 @@ contract EventTicket is ERC721, Pausable, Initializable {
         
         // Transfer platform fee from buyer
         bool feeSuccess = paymentToken.transferFrom(to, platformContract, platformFee);
-        require(feeSuccess, TokenTransferFailed(address(paymentToken), to, platformContract, platformFee));
+        require(
+            feeSuccess, 
+            TokenTransferFailed(address(paymentToken), to, platformContract, platformFee)
+        );
         
         // Transfer payment to seller
-        bool paymentSuccess = paymentToken.transferFrom(to, msg.sender, sellerPayment);
-        require(paymentSuccess, TokenTransferFailed(address(paymentToken), to, msg.sender, sellerPayment));
+        bool paymentSuccess = paymentToken.transferFrom(to, sender, sellerPayment);
+        require(
+            paymentSuccess, 
+            TokenTransferFailed(address(paymentToken), to, sender, sellerPayment)
+        );
         
-        _transfer(msg.sender, to, tokenId);
+        _transfer(sender, to, tokenId);
         
-        emit TicketResold(tokenId, msg.sender, to, price, platformFee, block.timestamp);
-    }
-
-    /**
-     * @notice Hook that is called before any token transfer
-     * @dev Ensures transfers only occur when event is active and before deadline
-     */
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 tokenId,
-        uint256 batchSize
-    ) internal virtual override {
-        super._beforeTokenTransfer(from, to, tokenId, batchSize);
-        require(!isClosed, EventClosed());
-        require(block.timestamp < deadline, DeadlinePassed(deadline, block.timestamp));
+        emit TicketResold(tokenId, sender, to, price, platformFee, block.timestamp);
     }
 
     /**
@@ -243,10 +256,24 @@ contract EventTicket is ERC721, Pausable, Initializable {
     }
 
     /**
+     * @notice Hook that is called during token transfers
+     * @dev Ensures transfers only occur when event is active and before deadline
+     */
+    function _update(
+        address to,
+        uint256 tokenId,
+        address auth
+    ) internal virtual override returns (address) {
+        require(!isClosed, EventClosed());
+        require(block.timestamp < deadline, DeadlinePassed(deadline, block.timestamp));
+        return super._update(to, tokenId, auth);
+    }
+
+    /**
      * @notice Validates if a ticket is valid for entry
      * @dev Checks if token exists and event is active
      */
     function validateTicket(uint256 tokenId) external view returns (bool) {
-        return _exists(tokenId) && !isClosed && block.timestamp < deadline;
+        return _ownerOf(tokenId) != address(0) && !isClosed && block.timestamp < deadline;
     }
 }

@@ -2,26 +2,29 @@
 pragma solidity 0.8.27;
 
 import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "../meta-transactions/MetaTransactionContext.sol";
 import "./EventTicket.sol";
 import "./TicketPlatform.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title Organization
- * @notice Contract managing organization operations and event creation
- * @dev Implements token payments and custom errors with require statements
+ * @notice Contract managing organization operations with gasless transaction support
+ * @dev Implements MetaTransactionContext for gasless operations
  */
-contract Organization is Pausable {
-    // Custom Errors for validation and access control
-    error NotOwner(address caller);
-    error NotPlatform(address caller);
+contract Organization is Pausable, MetaTransactionContext {
+    // Custom Errors
+    error NotOwner(address sender);
+    error NotPlatform(address sender);
     error InvalidOwner(address owner);
     error InvalidPlatform(address platform);
     error InvalidDeadline(uint256 deadline, uint256 current);
     error InvalidSupply(uint256 supply);
+    error InvalidPrice(uint256 price);
     error NotEventOwner(address eventAddress);
     error EventAlreadyClosed(address eventAddress);
-    error InvalidPrice(uint256 price);
+    error NoTokensToWithdraw(address token);
     error TokenTransferFailed(address token, address from, address to, uint256 amount);
     
     // State variables
@@ -29,7 +32,7 @@ contract Organization is Pausable {
     address public immutable platformContract;
     string public bannerIPFS;
     
-    // Events for subgraph indexing
+    // Events
     event BannerUpdated(
         string newBannerHash,
         uint256 timestamp
@@ -62,13 +65,20 @@ contract Organization is Pausable {
     );
 
     modifier onlyOwner() {
-        require(msg.sender == owner, NotOwner(msg.sender));
+        require(_msgSender() == owner, NotOwner(_msgSender()));
         _;
     }
     
     modifier onlyPlatform() {
-        require(msg.sender == platformContract, NotPlatform(msg.sender));
+        require(_msgSender() == platformContract, NotPlatform(_msgSender()));
         _;
+    }
+
+    /**
+     * @dev Override _msgSender to handle meta-transactions
+     */
+    function _msgSender() internal view virtual override(Context, MetaTransactionContext) returns (address) {
+        return MetaTransactionContext._msgSender();
     }
 
     constructor(address _owner, address _platformContract) {
@@ -79,8 +89,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Updates organization's banner IPFS hash
-     * @dev Only callable by organization owner when not paused
+     * @notice Updates organization's banner IPFS hash with gasless transaction support
      */
     function updateBanner(string memory newBannerHash) external onlyOwner whenNotPaused {
         bannerIPFS = newBannerHash;
@@ -88,12 +97,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Creates a new event using the platform's factory
-     * @dev Automatically registers event with platform and configures token payments
-     * @param eventURI The IPFS URI containing event metadata
-     * @param ticketPrice The price per ticket in payment token units
-     * @param deadline The timestamp after which tickets can't be sold/transferred
-     * @param maxSupply The maximum number of tickets that can be minted
+     * @notice Creates a new event with gasless transaction support
      */
     function createEvent(
         string memory eventURI,
@@ -137,8 +141,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Closes an event, preventing further ticket operations
-     * @dev Updates platform registries and event status
+     * @notice Closes an event with gasless transaction support
      */
     function closeEvent(address eventAddress) external onlyOwner whenNotPaused {
         require(
@@ -154,10 +157,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Updates ticket price for an event
-     * @dev Only callable by owner when event is active
-     * @param eventAddress The address of the event contract
-     * @param newPrice The new price in payment token units
+     * @notice Updates ticket price with gasless transaction support
      */
     function setTicketPrice(address eventAddress, uint256 newPrice) external onlyOwner whenNotPaused {
         require(
@@ -169,8 +169,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Updates deadline for an event
-     * @dev Only callable by owner when event is active
+     * @notice Updates deadline with gasless transaction support
      */
     function setDeadline(address eventAddress, uint256 newDeadline) external onlyOwner whenNotPaused {
         require(
@@ -182,7 +181,7 @@ contract Organization is Pausable {
     }
 
     /**
-     * @notice Transfers ownership to a new address
+     * @notice Transfers ownership with gasless transaction support
      * @dev Only callable by platform contract
      */
     function transferOwnership(address newOwner) external onlyPlatform {
@@ -190,6 +189,20 @@ contract Organization is Pausable {
         address previousOwner = owner;
         owner = newOwner;
         emit OwnershipTransferred(previousOwner, newOwner, block.timestamp);
+    }
+
+    /**
+     * @notice Withdraws tokens with gasless transaction support
+     */
+    function withdrawTokens(address token) external onlyOwner {
+        IERC20 tokenContract = IERC20(token);
+        uint256 balance = tokenContract.balanceOf(address(this));
+        require(balance > 0, NoTokensToWithdraw(token));
+        
+        bool success = tokenContract.transfer(owner, balance);
+        require(success, TokenTransferFailed(token, address(this), owner, balance));
+        
+        emit TokensReceived(token, balance, block.timestamp);
     }
 
     /**
@@ -206,22 +219,6 @@ contract Organization is Pausable {
      */
     function unpause() external onlyPlatform {
         _unpause();
-    }
-
-    /**
-     * @notice Withdraws tokens to the organization owner
-     * @dev Only callable by owner
-     * @param token The address of the token to withdraw
-     */
-    function withdrawTokens(address token) external onlyOwner {
-        IERC20 tokenContract = IERC20(token);
-        uint256 balance = tokenContract.balanceOf(address(this));
-        require(balance > 0, "No tokens to withdraw");
-        
-        bool success = tokenContract.transfer(owner, balance);
-        require(success, TokenTransferFailed(token, address(this), owner, balance));
-        
-        emit TokensReceived(token, balance, block.timestamp);
     }
 
     /**
