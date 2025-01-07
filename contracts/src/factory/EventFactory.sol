@@ -2,7 +2,7 @@
 pragma solidity 0.8.27;
 
 import "@openzeppelin/contracts/proxy/Clones.sol";
-import "./EventTicket.sol";
+import "../core/EventTicket.sol";
 
 /**
  * @title EventFactory

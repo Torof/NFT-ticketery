@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./Organization.sol";
 import "./EventTicket.sol";
-import "./EventFactory.sol";
+import "../factory/EventFactory.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
